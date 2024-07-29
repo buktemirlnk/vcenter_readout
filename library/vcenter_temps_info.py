@@ -11,7 +11,7 @@ from ansible.module_utils.basic import AnsibleModule
 class GetInfo():
     def __init__(self) -> None:
         self.vcenter_port = 443
-        self.datastore_list = []
+        self.temp_list = []
 
     def connect_vcenter(self,vcenters):
         context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -27,16 +27,15 @@ class GetInfo():
             self.content = self.si.RetrieveContent()
             return self.content
         except Exception as e :
-            print("vCenter connection error: ", e)
+            print("vCenter baglanti problemi: ", e)
             return False
-              
-    def get_all_objects(self,content, vimtype):
-        obj = {}
-        container = content.viewManager.CreateContainerView(content.rootFolder, vimtype, True)
-        for managed_object_ref in container.view:
-            obj.update({managed_object_ref: managed_object_ref.name})
-        return obj  
-      
+        
+    def get_all_objects(self,content):
+        obj_view = content.viewManager.CreateContainerView(content.rootFolder, [vim.VirtualMachine], True)
+        vms = obj_view.view
+        obj_view.Destroy()
+        return vms
+    
     def decode_data(self,data):
         if isinstance(data, list):
             return [self.decode_data(item) for item in data]
@@ -46,33 +45,43 @@ class GetInfo():
             return urllib.parse.unquote(data)
         else:
             return data
-
-    def datastore_data_parse(self,summary,vcenter_host):
+    
+    def datastore_data_parse(self,vm,vcenter_host):
+        summary = vm.summary
+        config = vm.config
         update_data_template = {
-            "Datastore": summary.name,
+            "Template Name": summary.config.name,
+            "Guest:": summary.config.guestFullName,
             "vcenter_name": vcenter_host,
-            "Capacity":(f"{summary.capacity / 1024 / 1024 / 1024} GB"),
-            "Free Space": (f"{summary.freeSpace / 1024 / 1024 / 1024} GB"),
-            "Type": summary.type
+            "Instance UUID": summary.config.instanceUuid,
+            "Path to VM": summary.config.vmPathName,
+            "Number of vCPUs": config.hardware.numCPU,
+            "Memory (MB)": config.hardware.memoryMB,
+            "Storage Comitted (KB)": (f"{summary.storage.committed / 1024 / 1024 } KB"),
+            "Storage Uncomitted (KB)": (f"{summary.storage.uncommitted / 1024 / 1024 } KB"),
+            "Storage Unshared (KB)": (f"{summary.storage.unshared / 1024 / 1024 } KB"),
+            "Power State":summary.runtime.powerState,
+            "IP Address": summary.guest.ipAddress,
+            "Host:": summary.runtime.host.name
         }
-        self.datastore_list.append(update_data_template)
+        self.datastore_list.append(update_data_template)       
 
     def disconnet_vcenter(self):
         Disconnect(self.si)
 
 get_info = GetInfo()
 
-def ds_list(vcenters_name):
+
+def temp_list(vcenters_name):
     vcenters = vcenters_name
     for vcenters_index in vcenters:
         content = get_info.connect_vcenter(vcenters_index)
-        datacenters = content.rootFolder.childEntity
-        for datacenter in datacenters:
-            datastores = datacenter.datastore
-            for datastore in datastores:
-                summary = datastore.summary
-                get_info.datastore_data_parse(summary,vcenters_index["vcenter_host"])
-        decoded_veriler = get_info.decode_data(get_info.datastore_list)
+        vms = get_info.get_all_objects(content)
+        templates = [vm for vm in vms if vm.config.template]
+        for template in templates:
+            get_info.datastore_data_parse(template)
+        decoded_veriler = get_info.decode_data(get_info.temp_list)
+    
     return decoded_veriler
 
 def main():
@@ -86,7 +95,7 @@ def main():
     params = module.params
     vcenters_name = params['vcenters_name']
     try:
-        data = ds_list(vcenters_name)
+        data = temp_list(vcenters_name)
         get_info.disconnet_vcenter()
         module.exit_json(changed=False, data=data)
     except Exception as e:
@@ -94,3 +103,12 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+
+
+
+
+
+
+
+
