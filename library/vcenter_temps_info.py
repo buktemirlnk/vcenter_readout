@@ -46,7 +46,7 @@ class GetInfo():
         else:
             return data
     
-    def datastore_data_parse(self,vm,vcenter_host):
+    def temp_data_parse(self,vm,vcenter_host):
         summary = vm.summary
         config = vm.config
         update_data_template = {
@@ -64,7 +64,7 @@ class GetInfo():
             "IP Address": summary.guest.ipAddress,
             "Host:": summary.runtime.host.name
         }
-        self.datastore_list.append(update_data_template)       
+        self.temp_list.append(update_data_template)       
 
     def disconnet_vcenter(self):
         Disconnect(self.si)
@@ -79,7 +79,7 @@ def temp_list(vcenters_name):
         vms = get_info.get_all_objects(content)
         templates = [vm for vm in vms if vm.config.template]
         for template in templates:
-            get_info.datastore_data_parse(template)
+            get_info.temp_data_parse(template,vcenters_index["vcenter_host"])
         decoded_veriler = get_info.decode_data(get_info.temp_list)
     
     return decoded_veriler
@@ -103,12 +103,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
-
